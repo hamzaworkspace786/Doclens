@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+/*
+  DocLens design tokens.
+  Ink-blue surfaces, with a highlighter-yellow accent that is reserved for
+  "this is where the answer came from" (citations, marks, focus rings).
+*/
+@theme {
+  --color-ink: #0f1722;
+  --color-panel: #162030;
+  --color-raised: #1d2a3f;
+  --color-line: #2a3a54;
+  --color-text: #e8edf5;
+  --color-muted: #95a3ba;
+  --color-mark: #f4d35e;
+  --color-on-mark: #1b1600;
+  --color-danger: #f28b82;
+
+  --font-sans: "Instrument Sans Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Source Serif 4 Variable", ui-serif, Georgia, serif;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-ink);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+}
+
+/* Highlighter pen effect, used on the logo and on cited passages. */
+.mark {
+  background-image: linear-gradient(
+    to top,
+    rgb(244 211 94 / 0.5) 0 0.78em,
+    transparent 0.78em
+  );
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  padding: 0 0.1em;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-mark);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
