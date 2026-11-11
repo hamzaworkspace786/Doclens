@@ -22,7 +22,7 @@ const panelClass =
 export function WorkspaceShell({
   user,
 }: {
-  user: { name: string; email: string };
+  user: { name: string; email: string; image: string | null };
 }) {
   // On small screens only one panel shows at a time. From lg up, all three do.
   const [active, setActive] = useState<PanelId>("analysis");
@@ -45,7 +45,7 @@ export function WorkspaceShell({
     <div className="flex h-dvh flex-col">
       <header className="flex h-14 shrink-0 items-center justify-between border-b border-line px-4">
         <Logo />
-        <UserMenu name={user.name} email={user.email} />
+        <UserMenu name={user.name} email={user.email} image={user.image} />
       </header>
 
       <div

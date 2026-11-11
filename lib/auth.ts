@@ -14,6 +14,13 @@ export const auth = betterAuth({
     enabled: true,
     minPasswordLength: 8,
   },
+  account: {
+    accountLinking: {
+      trustedProviders: ["google"],
+      requireLocalEmailVerified: false,
+      updateUserInfoOnLink: true,
+    },
+  },
   socialProviders: googleEnabled
     ? {
         google: {
