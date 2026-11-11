@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useDocuments } from "@/lib/use-documents";
 import { AnalysisPanel } from "./analysis-panel";
 import { ChatPanel } from "./chat-panel";
 import { DocRail } from "./doc-rail";
@@ -25,6 +26,20 @@ export function WorkspaceShell({
 }) {
   // On small screens only one panel shows at a time. From lg up, all three do.
   const [active, setActive] = useState<PanelId>("analysis");
+  const library = useDocuments();
+
+  const selectedDocument =
+    library.documents.find((doc) => doc.id === library.selectedId) ?? null;
+
+  function handleSelect(id: string) {
+    library.selectDocument(id);
+    setActive("analysis");
+  }
+
+  async function handleUpload(files: File[]) {
+    const created = await library.uploadFiles(files);
+    if (created.length > 0) setActive("analysis");
+  }
 
   return (
     <div className="flex h-dvh flex-col">
@@ -61,13 +76,23 @@ export function WorkspaceShell({
           aria-label="Documents"
           className={`${panelClass} ${active === "documents" ? "block" : "hidden"}`}
         >
-          <DocRail />
+          <DocRail
+            documents={library.documents}
+            loading={library.loading}
+            loadError={library.loadError}
+            selectedId={library.selectedId}
+            uploadingNames={library.uploadingNames}
+            uploadError={library.uploadError}
+            onSelect={handleSelect}
+            onUpload={handleUpload}
+            onDelete={library.deleteDocument}
+          />
         </section>
         <section
           aria-label="Analysis"
           className={`${panelClass} ${active === "analysis" ? "block" : "hidden"}`}
         >
-          <AnalysisPanel />
+          <AnalysisPanel document={selectedDocument} />
         </section>
         <section
           aria-label="Chat"
