@@ -20,3 +20,12 @@ export const ESTIMATED_PAGE_CHARS = 3000;
 // Chunking for search. Chunks never cross a page, so every chunk has one page number.
 export const CHUNK_MAX_CHARS = 800;
 export const CHUNK_OVERLAP_CHARS = 120;
+
+// Embeddings (turning chunks into vectors so search can match by meaning)
+export const EMBED_BATCH_SIZE = 50; // chunks per request, about 10k tokens
+export const PROCESSING_BUDGET_MS = 270_000; // stay inside Vercel's 300 second limit
+export const STALE_PROCESSING_MS = 10 * 60 * 1000; // "processing" this long means it was interrupted
+
+// Search
+export const SEARCH_RESULT_COUNT = 5;
+export const MAX_QUERY_CHARS = 500;

@@ -8,6 +8,8 @@ import type { PageContent } from "@/lib/types";
 interface PageViewerProps {
   documentId: string;
   pageCount: number;
+  page: number;
+  onPageChange: (page: number) => void;
 }
 
 interface PageResult {
@@ -19,9 +21,8 @@ interface PageResult {
 const navButton =
   "inline-flex items-center gap-1 rounded-lg border border-line px-3 py-1.5 text-sm transition-colors hover:bg-raised disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent";
 
-// Render this with key={documentId} so the page number resets for each document.
-export function PageViewer({ documentId, pageCount }: PageViewerProps) {
-  const [page, setPage] = useState(1);
+// The parent owns the page number, so other tabs (like Search) can jump to a page.
+export function PageViewer({ documentId, pageCount, page, onPageChange }: PageViewerProps) {
   const [result, setResult] = useState<PageResult | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
 
@@ -52,7 +53,7 @@ export function PageViewer({ documentId, pageCount }: PageViewerProps) {
   }, [documentId, page, key]);
 
   function goTo(next: number) {
-    setPage(Math.min(Math.max(next, 1), pageCount));
+    onPageChange(Math.min(Math.max(next, 1), pageCount));
     scroller.current?.scrollTo({ top: 0 });
   }
 

@@ -153,9 +153,9 @@ export function DocRail({
                     <span className="block truncate text-sm font-medium">{doc.title}</span>
                     <span className="mt-0.5 block text-xs text-muted">
                       {doc.status === "ready" && `${fileTypeLabel(doc.fileType)}, ${describeLength(doc)}`}
-                      {doc.status === "processing" && "Reading..."}
+                      {doc.status === "processing" && "Preparing for search..."}
                       {doc.status === "failed" && (
-                        <span className="text-danger">Could not be read</span>
+                        <span className="text-danger">Could not be prepared</span>
                       )}
                     </span>
                   </button>

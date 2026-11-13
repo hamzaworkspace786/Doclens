@@ -69,6 +69,40 @@ export function useDocuments() {
     };
   }, []);
 
+  // While a document is being prepared for search, check on it every few
+  // seconds. We only update documents we already show, so a document you just
+  // deleted can never reappear.
+  const processingKey = documents
+    .filter((doc) => doc.status === "processing")
+    .map((doc) => doc.id)
+    .join(",");
+
+  useEffect(() => {
+    if (!processingKey) return;
+    let cancelled = false;
+
+    const timer = setInterval(async () => {
+      for (const id of processingKey.split(",")) {
+        try {
+          const response = await fetch(`/api/documents/${id}`);
+          if (!response.ok) continue;
+          const body = (await response.json()) as { document: DocumentSummary };
+          if (cancelled) return;
+          setDocuments((current) =>
+            current.map((doc) => (doc.id === id ? body.document : doc)),
+          );
+        } catch {
+          // Network hiccup: we'll try again on the next tick.
+        }
+      }
+    }, 2500);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [processingKey]);
+
   /** Uploads files one after another. Resolves with the documents that were created. */
   const uploadFiles = useCallback(async (files: File[]) => {
     setUploadError("");

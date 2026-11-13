@@ -15,6 +15,8 @@ export interface DocumentSummary {
   pagesAreEstimated: boolean;
   chunkCount: number;
   characterCount: number;
+  // True once the document has been prepared for search with the current model.
+  searchable: boolean;
   createdAt: string;
 }
 
@@ -22,4 +24,11 @@ export interface PageContent {
   page: number;
   pageCount: number;
   text: string;
+}
+
+export interface SearchHit {
+  index: number; // chunk number within the document
+  page: number;
+  text: string;
+  score: number; // cosine similarity, higher is closer in meaning
 }
