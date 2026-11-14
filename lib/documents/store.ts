@@ -2,7 +2,13 @@ import "server-only";
 import { Binary, ObjectId } from "mongodb";
 import { EMBEDDING_DIMENSIONS, EMBEDDING_MODEL_ID } from "@/lib/ai/config";
 import { STALE_PROCESSING_MS } from "@/lib/constants";
-import type { DocumentStatus, DocumentSummary, FileType } from "@/lib/types";
+import type {
+  AnalysisStatus,
+  DocumentAnalysis,
+  DocumentStatus,
+  DocumentSummary,
+  FileType,
+} from "@/lib/types";
 import { db } from "@/lib/mongodb";
 import type { Chunk } from "./chunk";
 
@@ -10,10 +16,14 @@ import type { Chunk } from "./chunk";
 //   documents  one record per upload (title, status, counts)
 //   pages      the text of every page, used by the page viewer
 //   chunks     small overlapping pieces of text, each with its embedding vector
+//   analyses   the summary, key points, names and numbers, and action items
 // Every record carries userId, and every query below filters on it.
 //
-// Life of a document: "processing" (pages saved, vectors being made) then
-// "ready" (chunks saved with vectors) or "failed" (with a message for the user).
+// A document has two independent jobs, each with its own status, so one can
+// fail while the other works:
+//   status          "processing" then "ready" or "failed"   (search vectors)
+//   analysisStatus  "processing" then "ready" or "failed"   (the analysis)
+// Documents uploaded before analysis existed have no analysisStatus at all.
 
 interface DocumentRecord {
   _id: ObjectId;
@@ -29,6 +39,10 @@ interface DocumentRecord {
   characterCount: number;
   embeddingModel?: string;
   embeddingDimensions?: number;
+  analysisStatus?: Exclude<AnalysisStatus, "none">;
+  analysisError?: string;
+  analysisStartedAt?: Date;
+  analysisAt?: Date;
   createdAt: Date;
 }
 
@@ -50,9 +64,18 @@ interface ChunkRecord {
   embedding?: Binary;
 }
 
+interface AnalysisRecord {
+  documentId: ObjectId;
+  userId: string;
+  model: string;
+  generatedAt: Date;
+  content: DocumentAnalysis;
+}
+
 const documentsCollection = () => db.collection<DocumentRecord>("documents");
 const pagesCollection = () => db.collection<PageRecord>("pages");
 const chunksCollection = () => db.collection<ChunkRecord>("chunks");
+const analysesCollection = () => db.collection<AnalysisRecord>("analyses");
 
 // Create the indexes once per server process.
 let indexesReady: Promise<unknown> | null = null;
@@ -62,6 +85,8 @@ function ensureIndexes() {
     pagesCollection().createIndex({ documentId: 1, page: 1 }, { unique: true }),
     chunksCollection().createIndex({ documentId: 1, index: 1 }, { unique: true }),
     chunksCollection().createIndex({ userId: 1 }),
+    analysesCollection().createIndex({ documentId: 1 }, { unique: true }),
+    analysesCollection().createIndex({ userId: 1 }),
   ]).catch((error) => {
     indexesReady = null; // try again on the next request
     throw error;
@@ -91,24 +116,32 @@ function toSummary(record: DocumentRecord): DocumentSummary {
       record.status === "ready" &&
       record.embeddingModel === EMBEDDING_MODEL_ID &&
       record.embeddingDimensions === EMBEDDING_DIMENSIONS,
+    analysisStatus: record.analysisStatus ?? "none",
+    analysisError: record.analysisError,
+    analysisGeneratedAt: record.analysisAt?.toISOString(),
     createdAt: record.createdAt.toISOString(),
   };
 }
 
 const INTERRUPTED_MESSAGE =
   "Preparing this document was interrupted. Delete it and upload it again.";
+const ANALYSIS_INTERRUPTED_MESSAGE =
+  "The analysis was interrupted. Try generating it again.";
 
 // A background job that never finished (for example, the server restarted)
 // would leave a document "processing" forever. Mark those as failed.
 async function failInterruptedDocuments(userId: string) {
-  await documentsCollection().updateMany(
-    {
-      userId,
-      status: "processing",
-      createdAt: { $lt: new Date(Date.now() - STALE_PROCESSING_MS) },
-    },
-    { $set: { status: "failed", errorMessage: INTERRUPTED_MESSAGE } },
-  );
+  const cutoff = new Date(Date.now() - STALE_PROCESSING_MS);
+  await Promise.all([
+    documentsCollection().updateMany(
+      { userId, status: "processing", createdAt: { $lt: cutoff } },
+      { $set: { status: "failed", errorMessage: INTERRUPTED_MESSAGE } },
+    ),
+    documentsCollection().updateMany(
+      { userId, analysisStatus: "processing", analysisStartedAt: { $lt: cutoff } },
+      { $set: { analysisStatus: "failed", analysisError: ANALYSIS_INTERRUPTED_MESSAGE } },
+    ),
+  ]);
 }
 
 export async function countUserDocuments(userId: string) {
@@ -150,6 +183,19 @@ export async function getPageText(
   return record ? record.text : null;
 }
 
+/** The text of every page in order (index 0 is page 1), or null if there are none. */
+export async function getAllPages(userId: string, id: string): Promise<string[] | null> {
+  const documentId = toObjectId(id);
+  if (!documentId) return null;
+  await ensureIndexes();
+  const records = await pagesCollection()
+    .find({ documentId, userId })
+    .sort({ page: 1 })
+    .project<Pick<PageRecord, "text">>({ text: 1 })
+    .toArray();
+  return records.length > 0 ? records.map((record) => record.text) : null;
+}
+
 interface CreateInput {
   userId: string;
   title: string;
@@ -162,7 +208,7 @@ interface CreateInput {
 
 /**
  * Save a document and its pages straight away, as "processing", so the person
- * can start reading while vectors are made in the background.
+ * can start reading while vectors and the analysis are made in the background.
  */
 export async function createProcessingDocument(
   input: CreateInput,
@@ -170,6 +216,7 @@ export async function createProcessingDocument(
   await ensureIndexes();
 
   const _id = new ObjectId();
+  const now = new Date();
   const record: DocumentRecord = {
     _id,
     userId: input.userId,
@@ -181,7 +228,9 @@ export async function createProcessingDocument(
     pagesAreEstimated: input.pagesAreEstimated,
     chunkCount: input.chunkCount,
     characterCount: input.pages.reduce((sum, page) => sum + page.length, 0),
-    createdAt: new Date(),
+    analysisStatus: "processing",
+    analysisStartedAt: now,
+    createdAt: now,
   };
 
   await documentsCollection().insertOne(record);
@@ -278,6 +327,108 @@ export async function failProcessing(
   await chunksCollection().deleteMany({ documentId: _id });
 }
 
+// --- Analysis ---------------------------------------------------------------
+
+/**
+ * Mark a document's analysis as "processing", unless one is already running.
+ * Returns false when one is already running (the caller answers 409), so
+ * two clicks can never start two paid AI calls for the same document.
+ */
+export async function beginAnalysis(userId: string, id: string): Promise<boolean> {
+  const _id = toObjectId(id);
+  if (!_id) return false;
+  await ensureIndexes();
+  const result = await documentsCollection().updateOne(
+    // $ne also matches documents that have never had an analysis status.
+    { _id, userId, analysisStatus: { $ne: "processing" } },
+    {
+      $set: { analysisStatus: "processing", analysisStartedAt: new Date() },
+      $unset: { analysisError: "" },
+    },
+  );
+  return result.matchedCount > 0;
+}
+
+interface FinishAnalysisInput {
+  userId: string;
+  documentId: string;
+  content: DocumentAnalysis;
+  model: string;
+}
+
+/**
+ * Save the analysis and mark it ready. Returns false (and saves nothing) if
+ * the document was deleted while the analysis was being made.
+ */
+export async function finishAnalysis(input: FinishAnalysisInput): Promise<boolean> {
+  const _id = toObjectId(input.documentId);
+  if (!_id) throw new Error("Invalid document id.");
+
+  const stillThere = await documentsCollection().findOne(
+    { _id, userId: input.userId, analysisStatus: "processing" },
+    { projection: { _id: 1 } },
+  );
+  if (!stillThere) return false;
+
+  const generatedAt = new Date();
+  await analysesCollection().replaceOne(
+    { documentId: _id },
+    {
+      documentId: _id,
+      userId: input.userId,
+      model: input.model,
+      generatedAt,
+      content: input.content,
+    },
+    { upsert: true },
+  );
+
+  const result = await documentsCollection().updateOne(
+    { _id, userId: input.userId, analysisStatus: "processing" },
+    {
+      $set: { analysisStatus: "ready", analysisAt: generatedAt },
+      $unset: { analysisError: "" },
+    },
+  );
+
+  if (result.matchedCount === 0) {
+    // Deleted between the check above and now. Don't leave an orphaned analysis.
+    await analysesCollection().deleteMany({ documentId: _id });
+    return false;
+  }
+  return true;
+}
+
+/** Mark an analysis as failed, with a message that is safe to show. */
+export async function failAnalysis(userId: string, documentId: string, message: string) {
+  const _id = toObjectId(documentId);
+  if (!_id) return;
+  await documentsCollection().updateOne(
+    { _id, userId, analysisStatus: "processing" },
+    { $set: { analysisStatus: "failed", analysisError: message } },
+  );
+}
+
+export interface StoredAnalysis {
+  content: DocumentAnalysis;
+  model: string;
+  generatedAt: Date;
+}
+
+export async function getAnalysis(
+  userId: string,
+  documentId: string,
+): Promise<StoredAnalysis | null> {
+  const _id = toObjectId(documentId);
+  if (!_id) return null;
+  await ensureIndexes();
+  const record = await analysesCollection().findOne({ documentId: _id, userId });
+  if (!record) return null;
+  return { content: record.content, model: record.model, generatedAt: record.generatedAt };
+}
+
+// --- Search -----------------------------------------------------------------
+
 export interface StoredChunk {
   index: number;
   page: number;
@@ -316,6 +467,7 @@ async function removeDocumentData(documentId: ObjectId) {
   await Promise.all([
     pagesCollection().deleteMany({ documentId }),
     chunksCollection().deleteMany({ documentId }),
+    analysesCollection().deleteMany({ documentId }),
   ]);
   await documentsCollection().deleteOne({ _id: documentId });
 }

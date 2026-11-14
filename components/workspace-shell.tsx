@@ -92,7 +92,7 @@ export function WorkspaceShell({
           aria-label="Analysis"
           className={`${panelClass} ${active === "analysis" ? "block" : "hidden"}`}
         >
-          <AnalysisPanel document={selectedDocument} />
+          <AnalysisPanel document={selectedDocument} onAnalyze={library.analyzeDocument} />
         </section>
         <section
           aria-label="Chat"

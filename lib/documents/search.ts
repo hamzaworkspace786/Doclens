@@ -27,6 +27,7 @@ export async function searchDocument(
   documentId: string,
   query: string,
   embedOptions: EmbedOptions = {},
+  limit: number = SEARCH_RESULT_COUNT,
 ): Promise<SearchHit[] | null> {
   const document = await getDocument(userId, documentId);
   if (!document) return null;
@@ -52,5 +53,5 @@ export async function searchDocument(
       score: dot(queryVector, chunk.embedding),
     }))
     .sort((a, b) => b.score - a.score)
-    .slice(0, SEARCH_RESULT_COUNT);
+    .slice(0, limit);
 }

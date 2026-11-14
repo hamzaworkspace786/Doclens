@@ -4,7 +4,7 @@ import { MAX_DOCUMENTS_PER_USER, MAX_FILE_BYTES } from "@/lib/constants";
 import { chunkPages } from "@/lib/documents/chunk";
 import { UploadError } from "@/lib/documents/errors";
 import { parseDocument } from "@/lib/documents/parse";
-import { embedAndStoreChunks } from "@/lib/documents/process";
+import { analyzeAndStoreDocument, embedAndStoreChunks } from "@/lib/documents/process";
 import {
   countUserDocuments,
   listDocuments,
@@ -13,8 +13,8 @@ import {
 import { cleanTitle, validateUpload } from "@/lib/documents/validate";
 import { getUserOrNull } from "@/lib/session";
 
-// Vectors are made in the background after the response is sent. This is the
-// longest a single invocation may run on any Vercel plan.
+// Vectors and the analysis are made in the background after the response is
+// sent. This is the longest a single invocation may run on any Vercel plan.
 export const maxDuration = 300;
 
 function errorResponse(message: string, status: number) {
@@ -52,9 +52,10 @@ export async function POST(request: Request) {
     return errorResponse("No file was received.", 400);
   }
 
+  // The same key powers search and the analysis.
   if (!isEmbeddingConfigured()) {
     return errorResponse(
-      "Search isn't set up on this server yet. Add GOOGLE_GENERATIVE_AI_API_KEY to the environment and restart.",
+      "AI features aren't set up on this server yet. Add GOOGLE_GENERATIVE_AI_API_KEY to the environment and restart.",
       503,
     );
   }
@@ -82,10 +83,20 @@ export async function POST(request: Request) {
       chunkCount: chunks.length,
     });
 
-    // Answer now, make the vectors after. The person can read the pages
-    // while the document shows "preparing for search".
+    // Answer now, do the AI work after. The person can read the pages while
+    // the document shows "preparing for search" and "analyzing". The two jobs
+    // use different models and run side by side; neither throws, and each
+    // reports its own failure on the document.
     after(() =>
-      embedAndStoreChunks({ userId: user.id, documentId: document.id, chunks }),
+      Promise.all([
+        embedAndStoreChunks({ userId: user.id, documentId: document.id, chunks }),
+        analyzeAndStoreDocument({
+          userId: user.id,
+          documentId: document.id,
+          title: document.title,
+          pages,
+        }),
+      ]),
     );
 
     return NextResponse.json({ document }, { status: 201 });

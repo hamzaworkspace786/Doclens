@@ -4,14 +4,22 @@ import { useState } from "react";
 import { ESTIMATED_PAGE_CHARS } from "@/lib/constants";
 import { describeLength, fileTypeLabel, formatBytes } from "@/lib/format";
 import type { DocumentSummary } from "@/lib/types";
+import { AnalysisContent, type AnalysisTabId } from "./analysis-content";
 import { PageViewer } from "./page-viewer";
 import { SearchPanel } from "./search-panel";
 
-type TabId = "text" | "search";
+type TabId = "text" | "search" | AnalysisTabId;
 
-// The Summary, Key points, Names and numbers, and Action items tabs get their
-// content in the analysis phase.
-const comingSoonTabs = ["Summary", "Key points", "Names and numbers", "Action items"];
+const analysisTabs: { id: AnalysisTabId; label: string }[] = [
+  { id: "summary", label: "Summary" },
+  { id: "keypoints", label: "Key points" },
+  { id: "names", label: "Names and numbers" },
+  { id: "actions", label: "Action items" },
+];
+
+function isAnalysisTab(tab: TabId): tab is AnalysisTabId {
+  return analysisTabs.some((entry) => entry.id === tab);
+}
 
 const tabClass = (active: boolean) =>
   `-mb-px whitespace-nowrap border-b-2 pb-2.5 text-sm disabled:cursor-not-allowed ${
@@ -35,11 +43,25 @@ function searchHint(document: DocumentSummary) {
 
 // Keyed by document id from AnalysisPanel, so the tab and page reset when you
 // pick a different document.
-function DocumentView({ document }: { document: DocumentSummary }) {
-  const [tab, setTab] = useState<TabId>("text");
+function DocumentView({
+  document,
+  onAnalyze,
+}: {
+  document: DocumentSummary;
+  onAnalyze: (id: string) => Promise<string | null>;
+}) {
+  // Open on the summary when there is one, otherwise on the text.
+  const [tab, setTab] = useState<TabId>(
+    document.analysisStatus === "ready" ? "summary" : "text",
+  );
   const [page, setPage] = useState(1);
 
   const legacy = document.status === "ready" && !document.searchable;
+
+  function openPage(target: number) {
+    setPage(target);
+    setTab("text");
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -96,17 +118,16 @@ function DocumentView({ document }: { document: DocumentSummary }) {
           >
             Search
           </button>
-          {comingSoonTabs.map((label) => (
+          {analysisTabs.map((entry) => (
             <button
-              key={label}
+              key={entry.id}
               type="button"
               role="tab"
-              aria-selected={false}
-              disabled
-              title="Coming soon"
-              className={tabClass(false)}
+              aria-selected={tab === entry.id}
+              onClick={() => setTab(entry.id)}
+              className={tabClass(tab === entry.id)}
             >
-              {label}
+              {entry.label}
             </button>
           ))}
         </div>
@@ -121,27 +142,37 @@ function DocumentView({ document }: { document: DocumentSummary }) {
         />
       )}
       {tab === "search" && document.searchable && (
-        <SearchPanel
-          documentId={document.id}
-          onOpenPage={(target) => {
-            setPage(target);
-            setTab("text");
-          }}
+        <SearchPanel documentId={document.id} onOpenPage={openPage} />
+      )}
+      {isAnalysisTab(tab) && (
+        <AnalysisContent
+          document={document}
+          tab={tab}
+          onOpenPage={openPage}
+          onAnalyze={onAnalyze}
         />
       )}
     </div>
   );
 }
 
-export function AnalysisPanel({ document }: { document: DocumentSummary | null }) {
-  if (document) return <DocumentView key={document.id} document={document} />;
+export function AnalysisPanel({
+  document,
+  onAnalyze,
+}: {
+  document: DocumentSummary | null;
+  onAnalyze: (id: string) => Promise<string | null>;
+}) {
+  if (document) {
+    return <DocumentView key={document.id} document={document} onAnalyze={onAnalyze} />;
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="border-b border-line px-5 pt-4">
         <h2 className="truncate text-[15px] font-semibold">No document selected</h2>
         <div role="tablist" aria-label="Document sections" className="mt-3 flex gap-5 overflow-x-auto">
-          {["Text", "Search", ...comingSoonTabs].map((label, i) => (
+          {["Text", "Search", ...analysisTabs.map((entry) => entry.label)].map((label, i) => (
             <button
               key={label}
               type="button"

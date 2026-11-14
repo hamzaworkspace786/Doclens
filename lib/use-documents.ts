@@ -69,11 +69,11 @@ export function useDocuments() {
     };
   }, []);
 
-  // While a document is being prepared for search, check on it every few
-  // seconds. We only update documents we already show, so a document you just
-  // deleted can never reappear.
+  // While a document is being prepared for search or analyzed, check on it
+  // every few seconds. We only update documents we already show, so a
+  // document you just deleted can never reappear.
   const processingKey = documents
-    .filter((doc) => doc.status === "processing")
+    .filter((doc) => doc.status === "processing" || doc.analysisStatus === "processing")
     .map((doc) => doc.id)
     .join(",");
 
@@ -162,6 +162,28 @@ export function useDocuments() {
     [documents, selectedId],
   );
 
+  /**
+   * Start (or retry) the analysis of a document. Resolves with null when it
+   * started, or with a message to show the person when it could not.
+   * Progress then arrives through the polling above.
+   */
+  const analyzeDocument = useCallback(async (id: string): Promise<string | null> => {
+    try {
+      const response = await fetch(`/api/documents/${id}/analysis`, { method: "POST" });
+      if (!response.ok) {
+        return await readError(response, "Could not start the analysis. Try again.");
+      }
+      const body = (await response.json()) as { document?: DocumentSummary };
+      const updated = body.document;
+      if (updated) {
+        setDocuments((current) => current.map((doc) => (doc.id === id ? updated : doc)));
+      }
+      return null;
+    } catch {
+      return "Could not start the analysis. Check your connection and try again.";
+    }
+  }, []);
+
   return {
     documents,
     loading,
@@ -172,5 +194,6 @@ export function useDocuments() {
     uploadError,
     uploadFiles,
     deleteDocument,
+    analyzeDocument,
   };
 }
