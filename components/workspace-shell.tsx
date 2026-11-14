@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { useDocumentChat } from "@/lib/use-chat";
 import { useDocuments } from "@/lib/use-documents";
+import type { PageRequest } from "@/lib/types";
 import { AnalysisPanel } from "./analysis-panel";
 import { ChatPanel } from "./chat-panel";
 import { DocRail } from "./doc-rail";
@@ -27,9 +29,22 @@ export function WorkspaceShell({
   // On small screens only one panel shows at a time. From lg up, all three do.
   const [active, setActive] = useState<PanelId>("analysis");
   const library = useDocuments();
+  const chat = useDocumentChat();
+  const [pageRequest, setPageRequest] = useState<PageRequest | null>(null);
 
   const selectedDocument =
     library.documents.find((doc) => doc.id === library.selectedId) ?? null;
+
+  // A page cited in the chat opens in the Text tab of the analysis panel.
+  function openCitedPage(page: number) {
+    if (!selectedDocument) return;
+    setPageRequest((previous) => ({
+      documentId: selectedDocument.id,
+      page,
+      nonce: (previous?.nonce ?? 0) + 1,
+    }));
+    setActive("analysis");
+  }
 
   function handleSelect(id: string) {
     library.selectDocument(id);
@@ -92,13 +107,17 @@ export function WorkspaceShell({
           aria-label="Analysis"
           className={`${panelClass} ${active === "analysis" ? "block" : "hidden"}`}
         >
-          <AnalysisPanel document={selectedDocument} onAnalyze={library.analyzeDocument} />
+          <AnalysisPanel
+            document={selectedDocument}
+            onAnalyze={library.analyzeDocument}
+            pageRequest={pageRequest}
+          />
         </section>
         <section
           aria-label="Chat"
           className={`${panelClass} ${active === "chat" ? "block" : "hidden"}`}
         >
-          <ChatPanel />
+          <ChatPanel document={selectedDocument} chat={chat} onOpenPage={openCitedPage} />
         </section>
       </main>
     </div>

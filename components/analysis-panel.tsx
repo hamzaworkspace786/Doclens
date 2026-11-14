@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { ESTIMATED_PAGE_CHARS } from "@/lib/constants";
 import { describeLength, fileTypeLabel, formatBytes } from "@/lib/format";
-import type { DocumentSummary } from "@/lib/types";
+import type { DocumentSummary, PageRequest } from "@/lib/types";
 import { AnalysisContent, type AnalysisTabId } from "./analysis-content";
 import { PageViewer } from "./page-viewer";
 import { SearchPanel } from "./search-panel";
@@ -46,15 +46,29 @@ function searchHint(document: DocumentSummary) {
 function DocumentView({
   document,
   onAnalyze,
+  pageRequest,
 }: {
   document: DocumentSummary;
   onAnalyze: (id: string) => Promise<string | null>;
+  pageRequest: PageRequest | null;
 }) {
   // Open on the summary when there is one, otherwise on the text.
   const [tab, setTab] = useState<TabId>(
     document.analysisStatus === "ready" ? "summary" : "text",
   );
   const [page, setPage] = useState(1);
+
+  // A page asked for from outside, such as a citation in the chat, opens in the
+  // Text tab. The nonce changes on every request, so the same page twice counts.
+  // (Changing state while rendering is React's way to react to a changed prop.)
+  const [handledRequest, setHandledRequest] = useState(pageRequest?.nonce ?? 0);
+  if (pageRequest && pageRequest.nonce !== handledRequest) {
+    setHandledRequest(pageRequest.nonce);
+    if (pageRequest.documentId === document.id) {
+      setPage(Math.min(Math.max(pageRequest.page, 1), document.pageCount));
+      setTab("text");
+    }
+  }
 
   const legacy = document.status === "ready" && !document.searchable;
 
@@ -159,12 +173,21 @@ function DocumentView({
 export function AnalysisPanel({
   document,
   onAnalyze,
+  pageRequest,
 }: {
   document: DocumentSummary | null;
   onAnalyze: (id: string) => Promise<string | null>;
+  pageRequest: PageRequest | null;
 }) {
   if (document) {
-    return <DocumentView key={document.id} document={document} onAnalyze={onAnalyze} />;
+    return (
+      <DocumentView
+        key={document.id}
+        document={document}
+        onAnalyze={onAnalyze}
+        pageRequest={pageRequest}
+      />
+    );
   }
 
   return (
