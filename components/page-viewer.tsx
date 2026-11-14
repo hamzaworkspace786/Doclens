@@ -24,9 +24,10 @@ const navButton =
 // The parent owns the page number, so other tabs (like Search) can jump to a page.
 export function PageViewer({ documentId, pageCount, page, onPageChange }: PageViewerProps) {
   const [result, setResult] = useState<PageResult | null>(null);
+  const [tries, setTries] = useState(0);
   const scroller = useRef<HTMLDivElement>(null);
 
-  const key = `${documentId}:${page}`;
+  const key = `${documentId}:${page}:${tries}`;
   const loading = result?.key !== key;
 
   useEffect(() => {
@@ -66,9 +67,16 @@ export function PageViewer({ documentId, pageCount, page, onPageChange }: PageVi
           {loading && <p className="text-sm text-muted">Loading page {page}...</p>}
 
           {!loading && result?.error && (
-            <p role="alert" className="text-sm text-danger">
-              {result.error}
-            </p>
+            <div role="alert">
+              <p className="text-sm text-danger">{result.error}</p>
+              <button
+                type="button"
+                onClick={() => setTries((count) => count + 1)}
+                className={`${navButton} mt-3`}
+              >
+                Try again
+              </button>
+            </div>
           )}
 
           {!loading && !result?.error && paragraphs.length === 0 && (

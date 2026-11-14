@@ -101,6 +101,7 @@ export function WorkspaceShell({
             onSelect={handleSelect}
             onUpload={handleUpload}
             onDelete={library.deleteDocument}
+            onRetry={library.reload}
           />
         </section>
         <section

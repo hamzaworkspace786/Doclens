@@ -39,6 +39,7 @@ export function useDocuments() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [uploadingNames, setUploadingNames] = useState<string[]>([]);
   const [uploadError, setUploadError] = useState("");
+  const [reloads, setReloads] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -67,6 +68,13 @@ export function useDocuments() {
     return () => {
       cancelled = true;
     };
+  }, [reloads]);
+
+  /** Try loading the document list again after it failed. */
+  const reload = useCallback(() => {
+    setLoadError("");
+    setLoading(true);
+    setReloads((count) => count + 1);
   }, []);
 
   // While a document is being prepared for search or analyzed, check on it
@@ -195,5 +203,6 @@ export function useDocuments() {
     uploadFiles,
     deleteDocument,
     analyzeDocument,
+    reload,
   };
 }

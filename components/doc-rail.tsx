@@ -16,6 +16,7 @@ interface DocRailProps {
   onSelect: (id: string) => void;
   onUpload: (files: File[]) => void;
   onDelete: (id: string) => void;
+  onRetry: () => void;
 }
 
 export function DocRail({
@@ -28,13 +29,15 @@ export function DocRail({
   onSelect,
   onUpload,
   onDelete,
+  onRetry,
 }: DocRailProps) {
   const fileInput = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
   const uploading = uploadingNames.length > 0;
-  const isEmpty = !loading && documents.length === 0 && !uploading;
+  const isEmpty =
+    !loading && !loadError && documents.length === 0 && !uploading;
 
   function openFilePicker() {
     fileInput.current?.click();
@@ -90,12 +93,23 @@ export function DocRail({
       </div>
 
       {(uploadError || loadError) && (
-        <p
-          role="alert"
-          className="whitespace-pre-line border-b border-line px-4 py-3 text-sm leading-relaxed text-danger"
-        >
-          {uploadError || loadError}
-        </p>
+        <div className="border-b border-line px-4 py-3">
+          <p
+            role="alert"
+            className="whitespace-pre-line text-sm leading-relaxed text-danger"
+          >
+            {uploadError || loadError}
+          </p>
+          {loadError && !uploadError && (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="mt-2 rounded-lg border border-line px-3 py-1.5 text-sm transition-colors hover:bg-raised"
+            >
+              Try again
+            </button>
+          )}
+        </div>
       )}
 
       <div
@@ -104,7 +118,18 @@ export function DocRail({
         }`}
       >
         {loading && (
-          <p className="px-3 py-4 text-sm text-muted">Loading your documents...</p>
+          <div
+            role="status"
+            aria-label="Loading your documents"
+            className="space-y-1 p-1"
+          >
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="h-[52px] animate-pulse rounded-lg bg-raised/60"
+              />
+            ))}
+          </div>
         )}
 
         {isEmpty && (
@@ -128,7 +153,11 @@ export function DocRail({
                 key={`${name}-${i}`}
                 className="flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm text-muted"
               >
-                <LoaderCircle size={15} className="shrink-0 animate-spin" aria-hidden="true" />
+                <LoaderCircle
+                  size={15}
+                  className="shrink-0 animate-spin"
+                  aria-hidden="true"
+                />
                 <span className="min-w-0 truncate">Reading {name}...</span>
               </li>
             ))}
@@ -150,12 +179,19 @@ export function DocRail({
                     aria-current={selected ? "true" : undefined}
                     className="min-w-0 flex-1 rounded-lg px-3 py-2.5 text-left"
                   >
-                    <span className="block truncate text-sm font-medium">{doc.title}</span>
+                    <span className="block truncate text-sm font-medium">
+                      {doc.title}
+                    </span>
                     <span className="mt-0.5 block text-xs text-muted">
-                      {doc.status === "ready" && `${fileTypeLabel(doc.fileType)}, ${describeLength(doc)}`}
+                      {doc.status === "ready" &&
+                        (doc.analysisStatus === "processing"
+                          ? "Analyzing..."
+                          : `${fileTypeLabel(doc.fileType)}, ${describeLength(doc)}`)}
                       {doc.status === "processing" && "Preparing for search..."}
                       {doc.status === "failed" && (
-                        <span className="text-danger">Could not be prepared</span>
+                        <span className="text-danger">
+                          Could not be prepared
+                        </span>
                       )}
                     </span>
                   </button>

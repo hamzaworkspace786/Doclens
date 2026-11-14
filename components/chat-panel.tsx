@@ -128,13 +128,24 @@ function notReadyMessage(document: DocumentSummary) {
 
 export function ChatPanel({ document, chat, onOpenPage }: ChatPanelProps) {
   const [draft, setDraft] = useState("");
+  const [confirmingClear, setConfirmingClear] = useState(false);
+  const [clearError, setClearError] = useState("");
   const scroller = useRef<HTMLDivElement>(null);
 
+  const documentId = document?.id;
   const turns = document ? chat.turnsFor(document.id) : [];
   const busy = chat.busyId !== null;
   const busyHere = document !== null && chat.busyId === document.id;
   const ready = document !== null && document.searchable;
+  const history = document ? chat.historyFor(document.id) : "loading";
+  const canAsk = ready && history !== "loading";
   const lastContent = turns[turns.length - 1]?.content;
+  const { load } = chat;
+
+  // Fetch the saved conversation when a ready document is opened.
+  useEffect(() => {
+    if (documentId && ready) void load(documentId);
+  }, [documentId, ready, load]);
 
   // Keep the newest words in view while an answer streams.
   useEffect(() => {
@@ -143,11 +154,17 @@ export function ChatPanel({ document, chat, onOpenPage }: ChatPanelProps) {
   }, [turns.length, lastContent]);
 
   function submit(text: string) {
-    if (!document || !ready || busy) return;
+    if (!document || !canAsk || busy) return;
     const question = text.trim();
     if (!question) return;
     setDraft("");
     void chat.ask(document.id, question);
+  }
+
+  async function clearConversation() {
+    if (!document) return;
+    setConfirmingClear(false);
+    setClearError((await chat.clear(document.id)) ?? "");
   }
 
   return (
@@ -157,19 +174,49 @@ export function ChatPanel({ document, chat, onOpenPage }: ChatPanelProps) {
           <h2 className="text-[15px] font-semibold">Ask this document</h2>
           {document && <p className="mt-0.5 truncate text-xs text-muted">{document.title}</p>}
         </div>
-        {turns.length > 0 && document && (
-          <button
-            type="button"
-            onClick={() => chat.clear(document.id)}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-line px-2.5 py-1.5 text-xs text-muted transition-colors hover:bg-raised hover:text-text"
-          >
-            <Trash2 size={14} aria-hidden="true" />
-            Clear
-          </button>
-        )}
+        {turns.length > 0 &&
+          document &&
+          (confirmingClear ? (
+            <span className="flex shrink-0 items-center gap-1">
+              <button
+                type="button"
+                onClick={clearConversation}
+                className="rounded-md px-2 py-1 text-xs font-medium text-danger hover:bg-raised"
+              >
+                Delete chat
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmingClear(false)}
+                className="rounded-md px-2 py-1 text-xs text-muted hover:bg-raised"
+              >
+                Keep
+              </button>
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                setClearError("");
+                setConfirmingClear(true);
+              }}
+              disabled={busyHere}
+              title={busyHere ? "Wait for the answer to finish" : undefined}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-line px-2.5 py-1.5 text-xs text-muted transition-colors hover:bg-raised hover:text-text disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Trash2 size={14} aria-hidden="true" />
+              Clear
+            </button>
+          ))}
       </div>
 
       <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-4 py-4" aria-live="polite">
+        {clearError && (
+          <p role="alert" className="mb-3 text-sm leading-relaxed text-danger">
+            {clearError}
+          </p>
+        )}
+
         {!document && (
           <p className="mx-auto mt-10 max-w-xs text-center text-sm leading-relaxed text-muted">
             Select a document to ask it questions. Answers point to the page they came from,
@@ -183,7 +230,29 @@ export function ChatPanel({ document, chat, onOpenPage }: ChatPanelProps) {
           </p>
         )}
 
-        {ready && turns.length === 0 && (
+        {ready && history === "loading" && (
+          <div role="status" aria-label="Loading your conversation" className="space-y-3">
+            <div className="ml-auto h-10 w-2/3 animate-pulse rounded-2xl bg-raised/60" />
+            <div className="h-16 w-5/6 animate-pulse rounded-2xl bg-raised/60" />
+          </div>
+        )}
+
+        {ready && history === "failed" && (
+          <div className="mb-4 rounded-xl border border-line bg-ink p-3.5">
+            <p role="alert" className="text-sm leading-relaxed text-danger">
+              Couldn&rsquo;t load your earlier conversation about this document.
+            </p>
+            <button
+              type="button"
+              onClick={() => document && void chat.load(document.id)}
+              className="mt-2 rounded-lg border border-line px-3 py-1.5 text-sm transition-colors hover:bg-raised"
+            >
+              Try again
+            </button>
+          </div>
+        )}
+
+        {canAsk && turns.length === 0 && (
           <div className="mx-auto mt-6 max-w-sm">
             <p className="text-center font-serif text-[17px] leading-[1.7] text-muted">
               Ask anything about this document. Answers point to the page they came from.
@@ -234,7 +303,7 @@ export function ChatPanel({ document, chat, onOpenPage }: ChatPanelProps) {
             rows={1}
             value={draft}
             maxLength={CHAT_MAX_MESSAGE_CHARS}
-            disabled={!ready}
+            disabled={!canAsk}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
               // Enter sends, Shift+Enter adds a line. Don't send mid-composition (IME).
@@ -258,7 +327,7 @@ export function ChatPanel({ document, chat, onOpenPage }: ChatPanelProps) {
           ) : (
             <button
               type="submit"
-              disabled={!ready || busy || !draft.trim()}
+              disabled={!canAsk || busy || !draft.trim()}
               aria-label="Send question"
               className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-mark text-on-mark transition-opacity hover:opacity-90 disabled:opacity-40"
             >

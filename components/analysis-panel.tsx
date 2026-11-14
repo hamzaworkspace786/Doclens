@@ -83,8 +83,7 @@ function DocumentView({
         <h2 className="truncate text-[15px] font-semibold">{document.title}</h2>
         <p className="mt-1 text-sm text-muted">
           {fileTypeLabel(document.fileType)}, {describeLength(document)},{" "}
-          {formatBytes(document.fileSize)}, {document.chunkCount} text{" "}
-          {document.chunkCount === 1 ? "chunk" : "chunks"}
+          {formatBytes(document.fileSize)}
         </p>
         {document.pagesAreEstimated && (
           <p className="mt-1 text-sm text-muted">

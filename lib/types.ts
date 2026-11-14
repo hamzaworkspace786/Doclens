@@ -79,6 +79,15 @@ export interface ChatMessage {
   content: string;
 }
 
+// A message kept in the database, so a conversation survives a page refresh.
+// `pages` are the pages an answer was allowed to cite (empty for questions).
+export interface SavedChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  pages: number[];
+}
+
 // "Open this page of this document", sent from one panel (like the chat) to
 // another (the page viewer). The nonce changes on every request, so asking for
 // the same page twice still counts.

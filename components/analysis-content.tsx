@@ -1,6 +1,6 @@
 "use client";
 
-import { LoaderCircle, RotateCw, Sparkles } from "lucide-react";
+import { Download, LoaderCircle, RotateCw, Sparkles } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import type { AnalysisResponse, DocumentAnalysis, DocumentSummary, Entity } from "@/lib/types";
 
@@ -115,9 +115,19 @@ function PageChips({
   );
 }
 
-function Body({ children }: { children: ReactNode }) {
+function Body({ documentId, children }: { documentId: string; children: ReactNode }) {
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+      <div className="mb-4 flex justify-end">
+        <a
+          href={`/api/documents/${documentId}/export`}
+          download
+          className="inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1.5 text-xs text-muted transition-colors hover:bg-raised hover:text-text"
+        >
+          <Download size={14} aria-hidden="true" />
+          Export as Markdown
+        </a>
+      </div>
       {children}
       <p className="mt-6 text-xs leading-relaxed text-muted">
         Written by AI from the document&rsquo;s text. Check anything important against the
@@ -383,7 +393,7 @@ export function AnalysisContent({ document, tab, onOpenPage, onAnalyze }: Props)
   }
 
   return (
-    <Body>
+    <Body documentId={document.id}>
       {tab === "summary" && <SummaryView analysis={loaded.analysis} onOpenPage={onOpenPage} />}
       {tab === "keypoints" && (
         <KeyPointsView analysis={loaded.analysis} onOpenPage={onOpenPage} />

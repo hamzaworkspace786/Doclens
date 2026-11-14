@@ -60,3 +60,6 @@ export const CHAT_FIRST_TOKEN_TIMEOUT_MS = 20_000;
 export const CHAT_TOTAL_TIMEOUT_MS = 90_000;
 // Response header that lists the pages the model was allowed to cite.
 export const CHAT_PAGES_HEADER = "X-Doclens-Pages";
+// Saved messages kept per document (question and answer count separately).
+// Older ones are dropped, so one chat can't grow without limit.
+export const CHAT_MAX_SAVED_MESSAGES = 100;

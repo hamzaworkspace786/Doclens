@@ -1,13 +1,14 @@
 import "server-only";
 import { Binary, ObjectId } from "mongodb";
 import { EMBEDDING_DIMENSIONS, EMBEDDING_MODEL_ID } from "@/lib/ai/config";
-import { STALE_PROCESSING_MS } from "@/lib/constants";
+import { CHAT_MAX_SAVED_MESSAGES, STALE_PROCESSING_MS } from "@/lib/constants";
 import type {
   AnalysisStatus,
   DocumentAnalysis,
   DocumentStatus,
   DocumentSummary,
   FileType,
+  SavedChatMessage,
 } from "@/lib/types";
 import { db } from "@/lib/mongodb";
 import type { Chunk } from "./chunk";
@@ -17,6 +18,7 @@ import type { Chunk } from "./chunk";
 //   pages      the text of every page, used by the page viewer
 //   chunks     small overlapping pieces of text, each with its embedding vector
 //   analyses   the summary, key points, names and numbers, and action items
+//   chats      the saved conversation about each document (one record per document)
 // Every record carries userId, and every query below filters on it.
 //
 // A document has two independent jobs, each with its own status, so one can
@@ -72,10 +74,24 @@ interface AnalysisRecord {
   content: DocumentAnalysis;
 }
 
+interface ChatRecord {
+  documentId: ObjectId;
+  userId: string;
+  messages: {
+    id: string;
+    role: "user" | "assistant";
+    content: string;
+    pages: number[];
+    createdAt: Date;
+  }[];
+  updatedAt: Date;
+}
+
 const documentsCollection = () => db.collection<DocumentRecord>("documents");
 const pagesCollection = () => db.collection<PageRecord>("pages");
 const chunksCollection = () => db.collection<ChunkRecord>("chunks");
 const analysesCollection = () => db.collection<AnalysisRecord>("analyses");
+const chatsCollection = () => db.collection<ChatRecord>("chats");
 
 // Create the indexes once per server process.
 let indexesReady: Promise<unknown> | null = null;
@@ -87,6 +103,8 @@ function ensureIndexes() {
     chunksCollection().createIndex({ userId: 1 }),
     analysesCollection().createIndex({ documentId: 1 }, { unique: true }),
     analysesCollection().createIndex({ userId: 1 }),
+    chatsCollection().createIndex({ documentId: 1 }, { unique: true }),
+    chatsCollection().createIndex({ userId: 1 }),
   ]).catch((error) => {
     indexesReady = null; // try again on the next request
     throw error;
@@ -427,6 +445,84 @@ export async function getAnalysis(
   return { content: record.content, model: record.model, generatedAt: record.generatedAt };
 }
 
+// --- Chat history -----------------------------------------------------------
+
+interface ChatTurnInput {
+  userId: string;
+  documentId: string;
+  question: string;
+  answer: string;
+  /** The pages the answer was allowed to cite, so its chips still work after a reload. */
+  pages: number[];
+}
+
+/**
+ * Add one question and its answer to a document's saved conversation. Keeps
+ * only the newest CHAT_MAX_SAVED_MESSAGES. Does nothing if the document no
+ * longer exists.
+ */
+export async function appendChatTurn(input: ChatTurnInput): Promise<void> {
+  const _id = toObjectId(input.documentId);
+  if (!_id) return;
+  await ensureIndexes();
+
+  const owned = await documentsCollection().findOne(
+    { _id, userId: input.userId },
+    { projection: { _id: 1 } },
+  );
+  if (!owned) return;
+
+  const now = new Date();
+  const messages: ChatRecord["messages"] = [
+    { id: new ObjectId().toHexString(), role: "user", content: input.question, pages: [], createdAt: now },
+    { id: new ObjectId().toHexString(), role: "assistant", content: input.answer, pages: input.pages, createdAt: now },
+  ];
+
+  // $push with $slice adds both messages and trims the oldest in one step, so
+  // two answers finishing together can't overwrite each other.
+  const save = () =>
+    chatsCollection().updateOne(
+      { documentId: _id, userId: input.userId },
+      {
+        $push: { messages: { $each: messages, $slice: -CHAT_MAX_SAVED_MESSAGES } },
+        $set: { updatedAt: now },
+      },
+      { upsert: true },
+    );
+
+  try {
+    await save();
+  } catch (error) {
+    // Two first answers finishing together can both try to create the record.
+    // The unique index lets one win; the other just adds to it.
+    if ((error as { code?: number }).code === 11000) await save();
+    else throw error;
+  }
+}
+
+export async function getChatMessages(
+  userId: string,
+  documentId: string,
+): Promise<SavedChatMessage[]> {
+  const _id = toObjectId(documentId);
+  if (!_id) return [];
+  await ensureIndexes();
+  const record = await chatsCollection().findOne({ documentId: _id, userId });
+  return (record?.messages ?? []).map((message) => ({
+    id: message.id,
+    role: message.role,
+    content: message.content,
+    pages: message.pages,
+  }));
+}
+
+export async function clearChat(userId: string, documentId: string): Promise<void> {
+  const _id = toObjectId(documentId);
+  if (!_id) return;
+  await ensureIndexes();
+  await chatsCollection().deleteMany({ documentId: _id, userId });
+}
+
 // --- Search -----------------------------------------------------------------
 
 export interface StoredChunk {
@@ -468,6 +564,7 @@ async function removeDocumentData(documentId: ObjectId) {
     pagesCollection().deleteMany({ documentId }),
     chunksCollection().deleteMany({ documentId }),
     analysesCollection().deleteMany({ documentId }),
+    chatsCollection().deleteMany({ documentId }),
   ]);
   await documentsCollection().deleteOne({ _id: documentId });
 }
