@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
+import { DOCUMENT_RETENTION_DAYS } from "@/lib/constants";
 import { getSession } from "@/lib/session";
 import { AuthForm } from "@/components/auth-form";
 import { LoginExcerpt } from "@/components/login-excerpt";
@@ -28,6 +30,13 @@ export default function LoginPage() {
         <div className="flex flex-1 items-center justify-center py-12">
           <AuthForm />
         </div>
+        <p className="text-center text-xs leading-relaxed text-muted">
+          Free portfolio project. Uploaded documents are processed by Google&rsquo;s AI and deleted
+          after {DOCUMENT_RETENTION_DAYS} days.{" "}
+          <Link href="/privacy" className="underline underline-offset-4 hover:text-text">
+            Privacy
+          </Link>
+        </p>
       </section>
 
       <aside

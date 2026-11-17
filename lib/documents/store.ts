@@ -579,3 +579,20 @@ export async function deleteDocument(userId: string, id: string) {
   await removeDocumentData(_id);
   return true;
 }
+
+/**
+ * Delete documents (with their pages, chunks, analysis and chat) that were
+ * uploaded before `cutoff`, whoever owns them. Used by the daily cleanup so a
+ * free database can't fill up. Deletes at most `limit` per call and returns
+ * how many it deleted, so the caller can repeat until it gets fewer than `limit`.
+ */
+export async function deleteExpiredDocuments(cutoff: Date, limit = 25): Promise<number> {
+  await ensureIndexes();
+  const expired = await documentsCollection()
+    .find({ createdAt: { $lt: cutoff } })
+    .project<Pick<DocumentRecord, "_id">>({ _id: 1 })
+    .limit(limit)
+    .toArray();
+  for (const record of expired) await removeDocumentData(record._id);
+  return expired.length;
+}

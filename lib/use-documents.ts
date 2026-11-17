@@ -90,6 +90,9 @@ export function useDocuments() {
     let cancelled = false;
 
     const timer = setInterval(async () => {
+      // Nobody is looking at a background tab, so don't ask the server about it.
+      // It catches up on the next tick after the tab is visible again.
+      if (document.hidden) return;
       for (const id of processingKey.split(",")) {
         try {
           const response = await fetch(`/api/documents/${id}`);

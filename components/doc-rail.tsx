@@ -1,8 +1,9 @@
 "use client";
 
 import { useRef, useState } from "react";
+import Link from "next/link";
 import { LoaderCircle, Trash2, Upload } from "lucide-react";
-import { ACCEPT_ATTRIBUTE, MAX_FILE_LABEL } from "@/lib/constants";
+import { ACCEPT_ATTRIBUTE, DOCUMENT_RETENTION_DAYS, MAX_FILE_LABEL } from "@/lib/constants";
 import { describeLength, fileTypeLabel } from "@/lib/format";
 import type { DocumentSummary } from "@/lib/types";
 
@@ -233,11 +234,18 @@ export function DocRail({
         )}
       </div>
 
-      {documents.length > 0 && (
-        <p className="px-4 pb-3 text-xs text-muted">
-          Drop files anywhere here to add more. Up to {MAX_FILE_LABEL} each.
+      <div className="space-y-1.5 px-4 pb-3 text-xs leading-relaxed text-muted">
+        {documents.length > 0 && (
+          <p>Drop files anywhere here to add more. Up to {MAX_FILE_LABEL} each.</p>
+        )}
+        <p>
+          Documents are processed by Google&rsquo;s AI and deleted after {DOCUMENT_RETENTION_DAYS}{" "}
+          days. Please don&rsquo;t upload confidential files.{" "}
+          <Link href="/privacy" className="underline underline-offset-4 hover:text-text">
+            Privacy
+          </Link>
         </p>
-      )}
+      </div>
     </div>
   );
 }

@@ -13,7 +13,16 @@ if (!uri) {
 // on globalThis stops us from opening a new connection pool each time.
 const globalForMongo = globalThis as unknown as { _mongoClient?: MongoClient };
 
-export const client = globalForMongo._mongoClient ?? new MongoClient(uri);
+// A small pool and short timeouts: the free Atlas tier allows a limited number of
+// connections, and a request should fail quickly with an error rather than hang
+// for 30 seconds when the database can't be reached.
+export const client =
+  globalForMongo._mongoClient ??
+  new MongoClient(uri, {
+    maxPoolSize: 10,
+    serverSelectionTimeoutMS: 8_000,
+    connectTimeoutMS: 8_000,
+  });
 
 if (process.env.NODE_ENV !== "production") {
   globalForMongo._mongoClient = client;

@@ -63,3 +63,26 @@ export const CHAT_PAGES_HEADER = "X-Doclens-Pages";
 // Saved messages kept per document (question and answer count separately).
 // Older ones are dropped, so one chat can't grow without limit.
 export const CHAT_MAX_SAVED_MESSAGES = 100;
+
+// --- Fair use ----------------------------------------------------------------
+// DocLens runs on free tiers (Google's Gemini API, MongoDB Atlas, Vercel), so
+// every AI call is limited per person and for the whole site. The site limits
+// stop one burst of visitors from using up the shared daily quota for everyone.
+// Tune these to about 60 to 80 percent of the daily limits your Gemini key shows
+// in Google AI Studio. Counting uses UTC days, hours and minutes.
+export const LIMITS = {
+  // Per person
+  uploadsPerHour: 5,
+  uploadsPerDay: 8,
+  questionsPerMinute: 8,
+  questionsPerDay: 60,
+  reanalysesPerDay: 10, // "Analyze" and "Try again" clicks, not the automatic one at upload
+  // Whole site, per day
+  siteUploadsPerDay: 100,
+  siteQuestionsPerDay: 600,
+  siteReanalysesPerDay: 100,
+} as const;
+
+// Documents older than this are deleted by the daily cleanup (app/api/cron/cleanup),
+// so a free database can't fill up. Say the same thing in the privacy page.
+export const DOCUMENT_RETENTION_DAYS = 14;

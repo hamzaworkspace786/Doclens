@@ -11,7 +11,9 @@ import {
   createProcessingDocument,
 } from "@/lib/documents/store";
 import { cleanTitle, validateUpload } from "@/lib/documents/validate";
+import { limitResponse } from "@/lib/limit-response";
 import { getUserOrNull } from "@/lib/session";
+import { consume } from "@/lib/usage";
 
 // Vectors and the analysis are made in the background after the response is
 // sent. This is the longest a single invocation may run on any Vercel plan.
@@ -72,6 +74,11 @@ export async function POST(request: Request) {
     const fileType = validateUpload(file.name, bytes);
     const { pages, pagesAreEstimated } = await parseDocument(bytes, fileType);
     const chunks = chunkPages(pages);
+
+    // The file is valid. From here on it costs AI calls, so it counts toward the
+    // person's and the site's daily allowance.
+    const usage = await consume(user.id, "upload");
+    if (!usage.ok) return limitResponse(usage);
 
     const document = await createProcessingDocument({
       userId: user.id,

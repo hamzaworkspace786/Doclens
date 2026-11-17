@@ -29,6 +29,19 @@ export const auth = betterAuth({
         },
       }
     : {},
+  // Sign-in and sign-up attempts are limited per IP address (on in production).
+  // The counters live in the database, not in memory, because Vercel runs many
+  // separate server instances that don't share memory, so a memory counter
+  // would be easy to get around.
+  rateLimit: {
+    storage: "database",
+    window: 60,
+    max: 120,
+    customRules: {
+      "/sign-in/email": { window: 60, max: 10 },
+      "/sign-up/email": { window: 3600, max: 10 },
+    },
+  },
   // nextCookies must stay last in the list.
   plugins: [nextCookies()],
 });

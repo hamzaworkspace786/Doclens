@@ -8,6 +8,8 @@ import {
   getDocument,
 } from "@/lib/documents/store";
 import { getUserOrNull } from "@/lib/session";
+import { limitResponse } from "@/lib/limit-response";
+import { consume } from "@/lib/usage";
 import type { AnalysisResponse } from "@/lib/types";
 
 // POST runs the analysis in the background after it answers.
@@ -55,6 +57,13 @@ export async function POST(_request: Request, { params }: Context) {
       503,
     );
   }
+
+  // Already running? Say so, without using up one of the day's re-analyses.
+  if (document.analysisStatus === "processing") {
+    return errorResponse("This document is already being analyzed.", 409);
+  }
+  const usage = await consume(user.id, "reanalysis");
+  if (!usage.ok) return limitResponse(usage);
 
   // Load the text first, so a failure here can't leave the document stuck on "analyzing".
   const pages = await getAllPages(user.id, id);

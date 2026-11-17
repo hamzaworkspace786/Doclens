@@ -18,6 +18,8 @@ import {
   getDocument,
 } from "@/lib/documents/store";
 import { getUserOrNull } from "@/lib/session";
+import { limitResponse } from "@/lib/limit-response";
+import { consume } from "@/lib/usage";
 
 // An answer streams for up to CHAT_TOTAL_TIMEOUT_MS, plus the search before it.
 export const maxDuration = 120;
@@ -86,6 +88,11 @@ export async function POST(request: Request, { params }: Context) {
 
   const document = await getDocument(user.id, id);
   if (!document) return errorResponse("Document not found.", 404);
+
+  // The question is valid and the document is the person's. From here on it
+  // costs AI calls, so it counts toward their and the site's allowance.
+  const usage = await consume(user.id, "question");
+  if (!usage.ok) return limitResponse(usage);
 
   // 1. Find the passages closest in meaning to the question.
   let hits;

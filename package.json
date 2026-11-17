@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "node --conditions react-server --import tsx --test tests/analyze.test.ts tests/chat.test.ts tests/export.test.ts tests/usage.test.ts tests/store.test.ts",
+    "test:unit": "node --conditions react-server --import tsx --test tests/analyze.test.ts tests/chat.test.ts tests/export.test.ts",
+    "load-test": "node scripts/load-test.mjs",
+    "check-models": "node --env-file=.env.local scripts/check-models.mjs"
   },
   "dependencies": {
     "@ai-sdk/google": "^4.0.118",
@@ -32,6 +36,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.4.5",
     "tailwindcss": "^4",
+    "tsx": "^4",
     "typescript": "^5"
   }
 }

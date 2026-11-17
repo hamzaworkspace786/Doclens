@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Test files use mock models, and scripts are plain Node programs.
+    "tests/**",
+    "scripts/**",
   ]),
 ]);
 
